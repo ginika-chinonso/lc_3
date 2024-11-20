@@ -1,4 +1,6 @@
 mod registers;
+use std::{fs::File, io::Read};
+
 use registers::{Cond, Register};
 
 mod trapcodes;
@@ -38,6 +40,40 @@ impl Vm {
         vm.set_register(Register::Pc as u16, 0x3000);
 
         vm
+    }
+
+    // Loads a program to memory
+    fn load_program(&mut self, program: Vec<u16>) {
+        let mut program_start_address = program[0];
+
+        assert!(
+            program.len() <= MAX_ADDRESSABLE_MEMORY - program_start_address as usize,
+            "Bytecode is too long"
+        );
+
+        for i in 1..program.len() {
+            self.mem_write(program_start_address.into(), program[i].into());
+            program_start_address += 1;
+        }
+    }
+
+    fn load_program_from_file(&mut self, path: String) {
+        let mut file = File::open(path).unwrap();
+
+        let mut prog = vec![];
+
+        file.read_to_end(&mut prog).unwrap();
+
+        let mut program = vec![];
+
+        let mut i = 0;
+
+        while i < prog.len() {
+            program.push((prog[i] as u16) << 8 | (prog[i + 1] as u16));
+            i += 2;
+        }
+
+        self.load_program(program);
     }
 
     // Fetches an instruction from memory
@@ -301,6 +337,38 @@ mod tests {
         // 475 -> 0000 010 001110101
         dbg!(vm.get_register(Register::Pc as u16));
         vm.execute(0x475);
+        dbg!(vm.get_register(Register::Pc as u16));
+    }
+
+    #[test]
+    fn test_load_program() {
+        let mut vm = create_vm();
+
+        vm.set_register(0x2, 50);
+
+        let program = vec![0x3000, 0x1EAA];
+        vm.load_program(program);
+        let instruction = vm.fetch();
+
+        vm.execute(instruction);
+
+        assert_eq!(vm.get_register(Register::R7 as u16), 60);
+        assert_eq!(vm.get_register(Register::Cond as u16), 1);
+    }
+
+    #[test]
+    fn test_load_program_from_file() {
+        let mut vm = create_vm();
+
+        vm.load_program_from_file(String::from("src/examples/2048.obj"));
+
+        dbg!(vm.get_register(Register::Pc as u16));
+
+        let instruction = vm.fetch();
+        dbg!(instruction);
+
+        vm.execute(instruction);
+
         dbg!(vm.get_register(Register::Pc as u16));
     }
 }
