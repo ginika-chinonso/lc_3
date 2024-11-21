@@ -4,7 +4,7 @@ use std::{fs::File, io::Read};
 use registers::{Cond, Register};
 
 mod trapcodes;
-use trapcodes::TrapCodes;
+use trapcodes::{Mmr, TrapCodes};
 
 pub(crate) mod opcodes;
 use opcodes::Opcodes;
@@ -85,20 +85,20 @@ impl Vm {
 
         while self.running {
             let instruction = self.fetch();
-            dbg!(instruction);
-            println!("{}", decode_instruction(instruction));
 
-            self.execute(instruction);
+            // println!("{}", decode_instruction(instruction));
 
             self.set_register(
                 Register::Pc as u16,
                 self.get_register(Register::Pc as u16) + 1,
             );
+
+            self.execute(instruction);
         }
     }
 
     // Fetches an instruction from memory
-    fn fetch(&self) -> u16 {
+    fn fetch(&mut self) -> u16 {
         self.mem_read(self.get_register(Register::Pc as u16))
     }
 
@@ -141,7 +141,8 @@ impl Vm {
                 let pc_offset_9 = instruction & 0x1FF;
                 let memory_address = sign_extend(pc_offset_9, 9)
                     .wrapping_add(self.get_register(Register::Pc as u16));
-                self.set_register(dr, self.mem_read(memory_address));
+                let val = self.mem_read(memory_address);
+                self.set_register(dr, val);
                 self.update_flag(dr);
             }
 
@@ -187,10 +188,9 @@ impl Vm {
                 let dr = (instruction >> 9) & 0x7;
                 let base_r = (instruction >> 6) & 0x7;
                 let offset_6 = instruction & 0x3F;
-                self.set_register(
-                    dr,
-                    self.mem_read(sign_extend(offset_6, 6).wrapping_add(self.get_register(base_r))),
-                );
+                let val =
+                    self.mem_read(sign_extend(offset_6, 6).wrapping_add(self.get_register(base_r)));
+                self.set_register(dr, val);
                 self.update_flag(dr);
             }
 
@@ -220,20 +220,19 @@ impl Vm {
                     .wrapping_add(self.get_register(Register::Pc as u16));
                 let value_address = self.mem_read(memory_address);
 
-                self.set_register(dr, self.mem_read(value_address));
+                let val = self.mem_read(value_address);
+                self.set_register(dr, val);
                 self.update_flag(dr);
             }
 
             Opcodes::Sti => {
                 let sr = (instruction >> 9) & 0x7;
                 let pc_offset_9 = instruction & 0x1FF;
-                self.mem_write(
-                    self.mem_read(
-                        sign_extend(pc_offset_9, 9)
-                            .wrapping_add(self.get_register(Register::Pc as u16)),
-                    ),
-                    self.get_register(sr),
+                let addr = self.mem_read(
+                    sign_extend(pc_offset_9, 9)
+                        .wrapping_add(self.get_register(Register::Pc as u16)),
                 );
+                self.mem_write(addr, self.get_register(sr));
             }
 
             Opcodes::Jmp => {
@@ -277,7 +276,15 @@ impl Vm {
         self.registers[register_address as usize] = value;
     }
 
-    fn mem_read(&self, memory_address: u16) -> u16 {
+    fn mem_read(&mut self, memory_address: u16) -> u16 {
+        if memory_address == Mmr::Kbsr as u16 {
+            self.mem_write(memory_address, 1 << 15);
+            let mut val = [0];
+            std::io::stdin().read_exact(&mut val).unwrap();
+            self.mem_write(Mmr::Kbdr as u16, val[0] as u16);
+        } else {
+            self.mem_write(Mmr::Kbsr as u16, 0);
+        }
         self.memory[memory_address as usize]
     }
 

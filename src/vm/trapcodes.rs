@@ -22,7 +22,7 @@ impl TrapCodes {
             }
 
             TrapCodes::Out => {
-                println!(
+                print!(
                     "{}",
                     (vm.get_register(Register::R0 as u16) & 0xFF) as u8 as char
                 );
@@ -40,7 +40,7 @@ impl TrapCodes {
                 println!("Please pass in a value!");
                 let mut buffer = [0; 1];
                 io::stdin().read(&mut buffer).unwrap();
-                println!("{}", buffer[0] as u8 as char);
+                print!("{}", buffer[0] as u8 as char);
                 vm.set_register(Register::R0 as u16, buffer[0] as u16);
                 vm.update_flag(Register::R0 as u16);
             }
