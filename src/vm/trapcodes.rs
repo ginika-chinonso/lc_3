@@ -59,6 +59,7 @@ impl TrapCodes {
             }
 
             TrapCodes::Halt => {
+                vm.running = false;
                 println!("Program execution halted")
             }
         }
@@ -80,14 +81,16 @@ impl Into<TrapCodes> for u16 {
         } else if self == 0x25 {
             TrapCodes::Halt
         } else {
+            dbg!(self);
             panic!("Invalid trapcode")
         }
     }
 }
 
 // Device Register Assignment
-enum DRA {
-    Kbsr = 0xFE,   // keyboard status register
+// Memory mapped registers
+pub(crate) enum Mmr {
+    Kbsr = 0xFE00, // keyboard status register
     Kbdr = 0xFE02, // keyboard data register
     Dsr = 0xFE04,  // display status register
     Ddr = 0xFE06,  // display data register

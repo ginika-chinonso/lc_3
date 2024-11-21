@@ -1,4 +1,6 @@
-#[derive(Debug)]
+use std::fmt::Display;
+
+#[derive(Debug, Clone)]
 pub(crate) enum Opcodes {
     Br,   // branch
     Add,  // add
@@ -16,6 +18,29 @@ pub(crate) enum Opcodes {
     Res,  // reserved(unused)
     Lea,  // load effective addresses
     Trap, // execute trap
+}
+
+impl Display for Opcodes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Opcodes::Br => f.write_str("BR"),
+            Opcodes::Add => f.write_str("ADD"),
+            Opcodes::Ld => f.write_str("LD"),
+            Opcodes::St => f.write_str("ST"),
+            Opcodes::Jsr => f.write_str("JSR"),
+            Opcodes::And => f.write_str("AND"),
+            Opcodes::Ldr => f.write_str("LDR"),
+            Opcodes::Str => f.write_str("STR"),
+            Opcodes::Rti => f.write_str("RTI"),
+            Opcodes::Not => f.write_str("NOT"),
+            Opcodes::Ldi => f.write_str("LDI"),
+            Opcodes::Sti => f.write_str("STI"),
+            Opcodes::Jmp => f.write_str("JMP"),
+            Opcodes::Res => f.write_str("RES"),
+            Opcodes::Lea => f.write_str("LEA"),
+            Opcodes::Trap => f.write_str("TRAP"),
+        }
+    }
 }
 
 impl Into<Opcodes> for u16 {
