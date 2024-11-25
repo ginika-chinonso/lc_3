@@ -4,18 +4,18 @@ use crate::vm::opcodes::Opcodes;
 
 #[derive(Debug)]
 pub(crate) struct Instruction {
-    opcode: Opcodes,
-    dr: u16,
-    sr1: u16,
-    sr2: u16,
-    imm5: u16,
-    imm_or_cond_flag: u16,
-    nzp: u16,
-    base_r: u16,
-    offset_6: u16,
-    trap_vect_8: u16,
-    pc_offset_9: u16,
-    pc_offset_11: u16,
+    pub(crate) opcode: Opcodes,
+    pub(crate) dr: u16,
+    pub(crate) sr1: u16,
+    pub(crate) sr2: u16,
+    pub(crate) imm5: u16,
+    pub(crate) imm_or_cond_flag: u16,
+    pub(crate) nzp: u16,
+    pub(crate) base_r: u16,
+    pub(crate) offset_6: u16,
+    pub(crate) trap_vect_8: u16,
+    pub(crate) pc_offset_9: u16,
+    pub(crate) pc_offset_11: u16,
 }
 
 impl Instruction {
@@ -292,6 +292,7 @@ pub(crate) fn decode_instruction(instruction: u16) -> Instruction {
             res.dr = (instruction >> 9) & 0x7;
             res.sr1 = (instruction >> 6) & 0x7;
             if (instruction >> 5) & 1 == 1 {
+                res.imm_or_cond_flag = 1;
                 res.imm5 = instruction & 0x1F;
                 res
             } else {
@@ -312,7 +313,7 @@ pub(crate) fn decode_instruction(instruction: u16) -> Instruction {
         Opcodes::Jsr => {
             if (instruction >> 11) & 1 == 1 {
                 res.imm_or_cond_flag = 1;
-                res.pc_offset_11 = instruction & 0x3FF;
+                res.pc_offset_11 = instruction & 0x7FF;
                 res
             } else {
                 res.base_r = (instruction >> 6) & 0x7;
@@ -323,6 +324,7 @@ pub(crate) fn decode_instruction(instruction: u16) -> Instruction {
             res.dr = (instruction >> 9) & 0x7;
             res.sr1 = (instruction >> 6) & 0x7;
             if ((instruction >> 5) & 0x1) == 1 {
+                res.imm_or_cond_flag = 1;
                 res.imm5 = instruction & 0x1F;
                 res
             } else {
@@ -393,6 +395,9 @@ mod tests {
         let instruction = decode_instruction(0x475);
         println!("{:0x}", instruction.encode());
         println!("{}", instruction);
-        dbg!(format!("{:0x}", encode_instruction_string("BR 2 117".to_string()).encode()));
+        dbg!(format!(
+            "{:0x}",
+            encode_instruction_string("BR 2 117".to_string()).encode()
+        ));
     }
 }

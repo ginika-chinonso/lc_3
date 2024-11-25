@@ -99,7 +99,7 @@ pub(crate) enum Mmr {
 
 #[cfg(test)]
 mod tests {
-    use crate::vm::Vm;
+    use crate::vm::{decode_instruction, Vm};
 
     use super::Register;
 
@@ -120,7 +120,7 @@ mod tests {
 
         // instruction
         // F022 -> 1111 0000 00100010
-        vm.execute(0xF022);
+        vm.execute(decode_instruction(0xF022));
     }
 
     #[test]
@@ -129,7 +129,7 @@ mod tests {
 
         // instruction
         // F020 -> 1111 0000 00100000
-        vm.execute(0xF020);
+        vm.execute(decode_instruction(0xF020));
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
 
         // instruction
         // F021 -> 1111 0000 00100001
-        vm.execute(0xF021);
+        vm.execute(decode_instruction(0xF021));
     }
 
     #[test]
@@ -148,7 +148,7 @@ mod tests {
 
         // Instruction
         // FO23 -> 1111 0000 00100011
-        vm.execute(0xF023);
+        vm.execute(decode_instruction(0xF023));
         dbg!(vm.get_register(Register::R0 as u16));
     }
 
@@ -158,7 +158,7 @@ mod tests {
 
         // Instruction
         // FO25 -> 1111 0000 00100101
-        vm.execute(0xF025);
+        vm.execute(decode_instruction(0xF025));
     }
 
     #[test]
@@ -171,6 +171,6 @@ mod tests {
 
         // instruction
         // F024 -> 1111 0000 00100100
-        vm.execute(0xF024);
+        vm.execute(decode_instruction(0xF024));
     }
 }

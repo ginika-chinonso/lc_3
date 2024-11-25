@@ -9,7 +9,7 @@ use trapcodes::{Mmr, TrapCodes};
 pub(crate) mod opcodes;
 use opcodes::Opcodes;
 
-use crate::assembler::decode_instruction;
+use crate::assembler::{decode_instruction, Instruction};
 
 // Word size = 16 bits
 // Max addressable memory = 2^16 = 1 << 16 = 65536
@@ -85,16 +85,17 @@ impl Vm {
 
         while self.running {
             let instruction = self.fetch();
-
-            // println!("{}", decode_instruction(instruction));
-
-            self.set_register(
-                Register::Pc as u16,
-                self.get_register(Register::Pc as u16) + 1,
-            );
-
-            self.execute(instruction);
+            let instr = decode_instruction(instruction);
+            self.update_pc();
+            self.execute(instr);
         }
+    }
+
+    fn update_pc(&mut self) {
+        self.set_register(
+            Register::Pc as u16,
+            self.get_register(Register::Pc as u16) + 1,
+        );
     }
 
     // Fetches an instruction from memory
@@ -103,167 +104,137 @@ impl Vm {
     }
 
     // Executes an instruction
-    fn execute(&mut self, instruction: u16) {
-        let opcode: Opcodes = (instruction >> 12).into();
+    fn execute(&mut self, instruction: Instruction) {
+        let opcode: Opcodes = instruction.opcode;
 
         match opcode {
             Opcodes::Br => {
-                let nzp = (instruction >> 9) & 0x7;
-                let pc_offset_9 = instruction & 0x1FF;
-
                 let cond = self.get_register(Register::Cond as u16);
 
-                if (nzp & cond) > 0 {
+                if (instruction.nzp & cond) > 0 {
                     self.set_register(
                         Register::Pc as u16,
-                        sign_extend(pc_offset_9, 9)
+                        sign_extend(instruction.pc_offset_9, 9)
                             .wrapping_add(self.get_register(Register::Pc as u16)),
                     );
                 }
             }
 
             Opcodes::Add => {
-                let dr = (instruction >> 9) & 0x7; // destination register
-                let sr = self.get_register((instruction >> 6) & 0x7); // source register
-                let imm = (instruction >> 5) & 0x1; // immediate mode
-                let val2 = if imm == 0 {
-                    self.get_register(instruction & 0x7)
+                let val2 = if instruction.imm_or_cond_flag == 0 {
+                    self.get_register(instruction.sr2)
                 } else {
-                    sign_extend(instruction & 0x1F, 5)
+                    sign_extend(instruction.imm5, 5)
                 };
 
-                self.set_register(dr, sr.wrapping_add(val2));
-                self.update_flag(dr);
+                self.set_register(
+                    instruction.dr,
+                    self.get_register(instruction.sr1).wrapping_add(val2),
+                );
+                self.update_flag(instruction.dr);
             }
 
             Opcodes::Ld => {
-                let dr = (instruction >> 9) & 0x7;
-                let pc_offset_9 = instruction & 0x1FF;
-                let memory_address = sign_extend(pc_offset_9, 9)
+                let memory_address = sign_extend(instruction.pc_offset_9, 9)
                     .wrapping_add(self.get_register(Register::Pc as u16));
                 let val = self.mem_read(memory_address);
-                self.set_register(dr, val);
-                self.update_flag(dr);
+                self.set_register(instruction.dr, val);
+                self.update_flag(instruction.dr);
             }
 
             Opcodes::St => {
-                let sr = (instruction >> 9) & 0x7;
-                let pc_offset_9 = instruction & 0x1FF;
                 self.mem_write(
-                    sign_extend(pc_offset_9, 9)
+                    sign_extend(instruction.pc_offset_9, 9)
                         .wrapping_add(self.get_register(Register::Pc as u16)),
-                    self.get_register(sr),
+                    self.get_register(instruction.sr1),
                 );
             }
 
             Opcodes::Jsr => {
                 self.set_register(Register::R7 as u16, self.get_register(Register::Pc as u16));
 
-                if ((instruction >> 11) & 1) == 1 {
-                    let pc_offset_11 = instruction & 0x7FF;
+                if instruction.imm_or_cond_flag == 1 {
                     self.set_register(
                         Register::Pc as u16,
-                        sign_extend(pc_offset_11, 11)
+                        sign_extend(instruction.pc_offset_11, 11)
                             .wrapping_add(self.get_register(Register::Pc as u16)),
                     );
                 } else {
-                    let base_r = (instruction >> 6) & 0x7;
-                    self.set_register(Register::Pc as u16, self.get_register(base_r));
+                    self.set_register(Register::Pc as u16, self.get_register(instruction.base_r));
                 }
             }
 
             Opcodes::And => {
-                let dr = (instruction >> 9) & 0x7;
-                let sr1 = (instruction >> 6) & 0x7;
-                let val2 = if ((instruction >> 5) & 1) == 1 {
-                    sign_extend(instruction & 0x1F, 5)
+                let val2 = if instruction.imm_or_cond_flag == 1 {
+                    sign_extend(instruction.imm5, 5)
                 } else {
-                    self.get_register(instruction & 0x7)
+                    self.get_register(instruction.sr2)
                 };
-                self.set_register(dr, self.get_register(sr1) & val2);
-                self.update_flag(dr);
+                self.set_register(instruction.dr, self.get_register(instruction.sr1) & val2);
+                self.update_flag(instruction.dr);
             }
 
             Opcodes::Ldr => {
-                let dr = (instruction >> 9) & 0x7;
-                let base_r = (instruction >> 6) & 0x7;
-                let offset_6 = instruction & 0x3F;
-                let val =
-                    self.mem_read(sign_extend(offset_6, 6).wrapping_add(self.get_register(base_r)));
-                self.set_register(dr, val);
-                self.update_flag(dr);
+                let val = self.mem_read(
+                    sign_extend(instruction.offset_6, 6)
+                        .wrapping_add(self.get_register(instruction.base_r)),
+                );
+                self.set_register(instruction.dr, val);
+                self.update_flag(instruction.dr);
             }
 
             Opcodes::Str => {
-                let sr = (instruction >> 9) & 0x7;
-                let base_r = (instruction >> 6) & 0x7;
-                let offset_6 = instruction & 0x3F;
                 self.mem_write(
-                    sign_extend(offset_6, 6).wrapping_add(self.get_register(base_r)),
-                    self.get_register(sr),
+                    sign_extend(instruction.offset_6, 6)
+                        .wrapping_add(self.get_register(instruction.base_r)),
+                    self.get_register(instruction.sr1),
                 );
             }
 
             Opcodes::Rti => unimplemented!(),
 
             Opcodes::Not => {
-                let dr = (instruction >> 9) & 0x7;
-                let sr = (instruction >> 6) & 0x7;
-                self.set_register(dr, !self.get_register(sr));
-                self.update_flag(dr);
+                self.set_register(instruction.dr, !self.get_register(instruction.sr1));
+                self.update_flag(instruction.dr);
             }
 
             Opcodes::Ldi => {
-                let dr = (instruction >> 9) & 0x7;
-                let pc_offset_9 = instruction & 0x1FF;
-                let memory_address = sign_extend(pc_offset_9, 9)
+                let memory_address = sign_extend(instruction.pc_offset_9, 9)
                     .wrapping_add(self.get_register(Register::Pc as u16));
                 let value_address = self.mem_read(memory_address);
 
                 let val = self.mem_read(value_address);
-                self.set_register(dr, val);
-                self.update_flag(dr);
+                self.set_register(instruction.dr, val);
+                self.update_flag(instruction.dr);
             }
 
             Opcodes::Sti => {
-                let sr = (instruction >> 9) & 0x7;
-                let pc_offset_9 = instruction & 0x1FF;
                 let addr = self.mem_read(
-                    sign_extend(pc_offset_9, 9)
+                    sign_extend(instruction.pc_offset_9, 9)
                         .wrapping_add(self.get_register(Register::Pc as u16)),
                 );
-                self.mem_write(addr, self.get_register(sr));
+                self.mem_write(addr, self.get_register(instruction.sr1));
             }
 
             Opcodes::Jmp => {
-                let base_r = (instruction >> 6) & 0x7;
-                self.set_register(Register::Pc as u16, self.get_register(base_r));
+                self.set_register(Register::Pc as u16, self.get_register(instruction.base_r));
             }
 
             Opcodes::Res => unimplemented!(),
 
             Opcodes::Lea => {
-                let dr = (instruction >> 9) & 0x7;
-                let pc_offset_9 = instruction & 0x1FF;
                 self.set_register(
-                    dr,
-                    sign_extend(pc_offset_9, 9)
+                    instruction.dr,
+                    sign_extend(instruction.pc_offset_9, 9)
                         .wrapping_add(self.get_register(Register::Pc as u16)),
                 );
-                self.update_flag(dr);
+                self.update_flag(instruction.dr);
             }
 
             Opcodes::Trap => {
-                let trapvect_8 = instruction & 0xFF;
-
-                let trap_instruction: TrapCodes = trapvect_8.into();
+                let trap_instruction: TrapCodes = instruction.trap_vect_8.into();
 
                 trap_instruction.execute(self);
-
-                // self.set_register(Register::R7 as u16, self.get_register(Register::Pc as u16));
-                // self.set_register(Register::Pc as u16, self.mem_read(trapvect_8));
-                // self.set_register(Register::Pc as u16, self.get_register(Register::R7 as u16));
-                // self.update_flag(Register::Pc as u16);
             }
         }
     }
@@ -319,7 +290,7 @@ mod tests {
     // FEAA -> 1111 111 010 1 01010
     // EAA ->  0000 111 010 1 01010
 
-    use crate::vm::{sign_extend, Register, Vm};
+    use crate::vm::{decode_instruction, sign_extend, Register, Vm};
 
     fn create_vm() -> Vm {
         Vm::initialize()
@@ -333,7 +304,7 @@ mod tests {
         assert_eq!(vm.get_register(0x2), 50);
         // Run instruction 0x1EAA
         // 1EAA -> 0001 111 010 1 01010
-        vm.execute(0x1EAA);
+        vm.execute(decode_instruction(0x1EAA));
         assert_eq!(vm.get_register(Register::R7 as u16), 60);
         assert_eq!(vm.get_register(Register::Cond as u16), 1);
     }
@@ -353,9 +324,9 @@ mod tests {
         assert_eq!(vm.mem_read(0x62), 10);
 
         // Run instruction
-        //  A7BB -> 1010 011 110111011 -> throwing overflow error
+        //  A7BB -> 1010 011 110111011
         //  A6BB -> 1010 011 010111011
-        vm.execute(0xA6BB);
+        vm.execute(decode_instruction(0xA6BB));
 
         assert_eq!(vm.get_register(0x3), 10);
         assert_eq!(vm.get_register(Register::Cond as u16), 1);
@@ -369,7 +340,7 @@ mod tests {
         // 575 -> 0000 010 101110101
         // 475 -> 0000 010 001110101
         dbg!(vm.get_register(Register::Pc as u16));
-        vm.execute(0x475);
+        vm.execute(decode_instruction(0x475));
         dbg!(vm.get_register(Register::Pc as u16));
     }
 
@@ -383,7 +354,7 @@ mod tests {
         vm.load_program(program);
         let instruction = vm.fetch();
 
-        vm.execute(instruction);
+        vm.execute(decode_instruction(instruction));
 
         assert_eq!(vm.get_register(Register::R7 as u16), 60);
         assert_eq!(vm.get_register(Register::Cond as u16), 1);
@@ -400,7 +371,7 @@ mod tests {
         let instruction = vm.fetch();
         dbg!(instruction);
 
-        vm.execute(instruction);
+        vm.execute(decode_instruction(instruction));
 
         dbg!(vm.get_register(Register::Pc as u16));
     }
@@ -409,9 +380,9 @@ mod tests {
     fn test_run_program() {
         let mut vm = create_vm();
 
-        // vm.load_program_from_file(String::from("src/examples/2048.obj"));
+        vm.load_program_from_file(String::from("src/examples/2048.obj"));
         // vm.load_program_from_file(String::from("src/examples/rogue.obj"));
-        vm.load_program_from_file(String::from("src/examples/hello-world.obj"));
+        // vm.load_program_from_file(String::from("src/examples/hello-world.obj"));
 
         vm.run();
     }
